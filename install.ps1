@@ -54,4 +54,58 @@ function Merge-ClaudeHooks {
 
 if ($DotSourceOnly) { return }
 
-# ---- main install flow (Task 6) appended below ----
+$here = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# 1. Locate .claude
+if (-not (Test-Path $ClaudeDir)) {
+  throw ".claude directory not found at '$ClaudeDir'. Pass -ClaudeDir <path>."
+}
+$hooksDir = Join-Path $ClaudeDir 'hooks'
+if (-not (Test-Path $hooksDir)) { New-Item -ItemType Directory -Path $hooksDir | Out-Null }
+
+# 2. Copy hook scripts
+Copy-Item (Join-Path $here 'src\claude-record-window.ps1') $hooksDir -Force
+Copy-Item (Join-Path $here 'src\notify-toast.ps1')         $hooksDir -Force
+Write-Host "Copied hook scripts to $hooksDir"
+
+# 3. Compile the focus exe
+$csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+if (-not (Test-Path $csc)) { $csc = "$env:WINDIR\Microsoft.NET\Framework\v4.0.30319\csc.exe" }
+if (-not (Test-Path $csc)) { throw "csc.exe not found. Install .NET Framework 4.x." }
+$exePath = Join-Path $hooksDir 'claudefocus.exe'
+try {
+  & $csc /nologo /target:winexe /out:"$exePath" (Join-Path $here 'src\claude-focus.cs')
+} catch {
+  throw "Compile failed. If claudefocus.exe is running, close it and re-run. $_"
+}
+if ($LASTEXITCODE -ne 0) { throw "csc.exe exited $LASTEXITCODE" }
+Write-Host "Compiled $exePath"
+
+# 4. Register claudefocus protocol (HKCU)
+$base = 'HKCU:\SOFTWARE\Classes\claudefocus'
+New-Item -Path $base -Force | Out-Null
+Set-ItemProperty -Path $base -Name '(default)' -Value 'URL:claudefocus'
+Set-ItemProperty -Path $base -Name 'URL Protocol' -Value ''
+$cmdKey = Join-Path $base 'shell\open\command'
+New-Item -Path $cmdKey -Force | Out-Null
+Set-ItemProperty -Path $cmdKey -Name '(default)' -Value ('"{0}"' -f $exePath)
+Write-Host "Registered claudefocus: protocol -> $exePath"
+
+# 5. Merge settings.json (with backup)
+$settingsPath = Join-Path $ClaudeDir 'settings.json'
+if (Test-Path $settingsPath) {
+  $stamp = (Get-Date -Format 'yyyyMMdd-HHmmss')
+  $backup = "$settingsPath.bak-$stamp"
+  Copy-Item $settingsPath $backup -Force
+  Write-Host "Backed up settings.json -> $backup"
+  $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json -AsHashtable
+} else {
+  $settings = @{}
+}
+$merged = Merge-ClaudeHooks -Settings $settings -ClaudeDir ($ClaudeDir -replace '\\','/')
+$merged | ConvertTo-Json -Depth 20 | Out-File -FilePath $settingsPath -Encoding utf8
+Write-Host "Updated $settingsPath"
+
+# 6. Summary
+Write-Host ""
+Write-Host "Done. Restart Claude Code for the hooks to take effect." -ForegroundColor Green
