@@ -2,8 +2,16 @@
 
 Clickable Windows toast notifications for [Claude Code](https://claude.com/claude-code).
 A toast pops when Claude needs your input or finishes a task. **Click it and focus
-snaps back to the exact terminal that launched the session** — in ~10–30ms, not the
+snaps straight to the exact terminal that launched that session** — in ~10–30ms, not the
 multi-second lag of naive PowerShell focus hooks.
+
+## Why
+
+Built for the multi-IDE workflow: several editors open at once, one per codebase, each
+running its own Claude Code session. When a session needs input or wraps up, you don't want
+to hunt through a stack of near-identical windows to find which one. The toast tells you
+*which* session pinged you, and a single click drops you into the right terminal — every
+session reachable in one click, no Alt-Tab archaeology.
 
 ## Requirements
 
@@ -15,7 +23,7 @@ multi-second lag of naive PowerShell focus hooks.
 ## Install
 
 ```powershell
-git clone https://github.com/<you>/claude-code-notifications
+git clone https://github.com/quietcactus/claude-code-notifications
 cd claude-code-notifications
 pwsh -File install.ps1
 ```
