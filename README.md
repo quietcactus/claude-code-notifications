@@ -1,81 +1,89 @@
 # claude-code-notifications
 
 Clickable Windows toast notifications for [Claude Code](https://claude.com/claude-code).
-A toast pops when Claude needs your input or finishes a task. **Click it and focus
-snaps straight to the exact terminal that launched that session** — in ~10–30ms, not the
-multi-second lag of naive PowerShell focus hooks.
+
+A toast pops when Claude finishes a response or needs your input. It shows the project
+folder and a snippet of Claude's reply. **Click it (or "Focus window") and the exact
+window that launched that session comes to the front**, even with several Claude sessions
+open at once.
 
 ## Why
 
-Built for the multi-IDE workflow: several editors open at once, one per codebase, each
-running its own Claude Code session. When a session needs input or wraps up, you don't want
-to hunt through a stack of near-identical windows to find which one. The toast tells you
-*which* session pinged you, and a single click drops you into the right terminal — every
-session reachable in one click, no Alt-Tab archaeology.
+Built for the multi-IDE workflow: several editors or terminals open, one per codebase,
+each running its own Claude Code session. When a session pings you, the toast tells you
+*which* one, and a single click drops you into the right window. No Alt-Tab archaeology.
+
+The window is resolved from the Claude process itself (Windows Terminal, Cursor, VS Code),
+so switching apps right after sending a prompt does not record the wrong one. Maximized
+windows stay maximized when focused.
 
 ## Requirements
 
 - Windows 10/11
-- Claude Code installed (a `.claude` directory in your user profile)
-- PowerShell 7+ (`pwsh`) to run the installer
-- .NET Framework 4.x (`csc.exe`) — bundled with Windows; used once at install to compile the focus helper
+- Claude Code installed
+- Nothing else to download. The small focus helper (`claudefocus.exe`) is compiled on your
+  machine with the .NET Framework 4 compiler that ships with Windows.
 
 ## Install
 
-```powershell
-git clone https://github.com/quietcactus/claude-code-notifications
-cd claude-code-notifications
-pwsh -File install.ps1
-```
-
-Then restart Claude Code.
-
-Custom `.claude` location:
+Double-click `Install.cmd`, or from a terminal:
 
 ```powershell
-pwsh -File install.ps1 -ClaudeDir "D:\path\to\.claude"
+powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1
 ```
 
-The installer:
-1. copies two hook scripts into `<.claude>\hooks\`,
-2. compiles `claudefocus.exe` into `<.claude>\hooks\` using the built-in `csc.exe`,
-3. registers a `claudefocus:` URL protocol in `HKCU`,
-4. backs up `settings.json` and idempotently adds three hooks (`Notification`, `Stop`, `UserPromptSubmit`).
+Then restart any open Claude Code sessions.
 
-## How it works
+Custom `.claude` location (the installer also honors `CLAUDE_CONFIG_DIR`):
 
-`UserPromptSubmit` records the foreground window's handle to `%TEMP%`. The toast carries
-`launch=claudefocus:open`; clicking it invokes the `claudefocus:` protocol, which runs the
-precompiled `claudefocus.exe` directly — one native process that reads the handle and brings
-the window forward. No runtime C# compilation, no wscript→powershell chain. See
-[docs/how-it-works.md](docs/how-it-works.md).
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -ClaudeDir "D:\path\to\.claude"
+```
+
+What install does:
+
+1. copies the `payload\` scripts to `<.claude>\hooks\claude-notify\`,
+2. compiles `claudefocus.exe` there with the built-in `csc.exe`,
+3. registers the `claudefocus:` URL protocol for the current user (HKCU),
+4. backs up `settings.json`, then adds `UserPromptSubmit`, `Stop` and `Notification` hooks.
+   Existing notification hooks from this project are replaced; other hooks are left alone.
+
+Re-running install is safe.
 
 ## Uninstall
 
+Double-click `Uninstall.cmd`, or:
+
 ```powershell
-pwsh -File uninstall.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File uninstall.ps1
 ```
 
-Removes the hooks and exe, unregisters the protocol, and restores the newest `settings.json`
-backup. Note: if you ran `install.ps1` multiple times, the newest backup is the state *before
-the last install* — which may already contain the hooks. For a fully clean removal after
-repeated installs, restore an earlier `settings.json.bak-*` or remove the three hook entries
-by hand.
+Reverses everything install did: removes the hooks from `settings.json` (backed up
+first), unregisters the protocol, deletes the install directory and the per-session
+window files in `%TEMP%`.
+
+## How it works
+
+`UserPromptSubmit` walks the hook's process ancestry to find the terminal or editor window
+that owns the Claude session and records its handle per session. The toast carries
+`claudefocus:<hwnd>`; clicking it runs the precompiled `claudefocus.exe`, which brings that
+window forward. See [docs/how-it-works.md](docs/how-it-works.md).
 
 ## Customizing the toast text
 
-The notification strings live in the hook commands in `settings.json`
-(`-Message "Needs your input"` / `-Message "Done"`). Edit them there.
+The default strings live in the hook commands in `settings.json`
+(`-Message "Done"` / `-Message "Needs your input"`). Edit them there. `Notification`
+events use Claude's own message when one is provided.
 
 ## Development
 
-Run the merge-logic tests (Pester 5):
+Run the settings merge tests (Pester 5):
 
 ```powershell
 Install-Module Pester -MinimumVersion 5.0 -Scope CurrentUser -Force -SkipPublisherCheck
-Invoke-Pester tests\Merge-Hooks.Tests.ps1
+Invoke-Pester tests
 ```
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

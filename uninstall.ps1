@@ -1,27 +1,43 @@
-[CmdletBinding()]
 param(
-  [string]$ClaudeDir = (Join-Path $env:USERPROFILE '.claude')
+  [string]$ClaudeDir = ''
 )
+
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'common.ps1')
 
-$hooksDir = Join-Path $ClaudeDir 'hooks'
-foreach ($f in 'claude-record-window.ps1','notify-toast.ps1','claudefocus.exe') {
-  $p = Join-Path $hooksDir $f
-  if (Test-Path $p) { Remove-Item $p -Force; Write-Host "Removed $p" }
+$claude = Get-ClaudeDir $ClaudeDir
+$installDir = Join-Path $claude 'hooks\claude-notify'
+$settingsPath = Join-Path $claude 'settings.json'
+
+Write-Host 'Uninstalling Claude Code notifications'
+
+if (Test-Path $settingsPath) {
+  $settings = Read-Settings $settingsPath
+  $removed = Remove-NotifyHooks $settings
+  if ($removed -gt 0) {
+    $backup = Backup-Settings $settingsPath
+    Write-Host "  backed up settings to $backup"
+    Write-Settings $settings $settingsPath
+  }
+  Write-Host "  removed $removed hook(s) from $settingsPath"
 }
 
-$base = 'HKCU:\SOFTWARE\Classes\claudefocus'
-if (Test-Path $base) { Remove-Item $base -Recurse -Force; Write-Host "Removed claudefocus: protocol" }
+[Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($ProtocolKey, $false)
+Write-Host '  removed claudefocus: protocol'
 
-# Restore newest settings backup
-$settingsPath = Join-Path $ClaudeDir 'settings.json'
-$backup = Get-ChildItem (Split-Path $settingsPath) -Filter 'settings.json.bak-*' -ErrorAction SilentlyContinue |
-          Sort-Object Name -Descending | Select-Object -First 1
-if ($backup) {
-  Copy-Item $backup.FullName $settingsPath -Force
-  Write-Host "Restored settings.json from $($backup.Name)"
-} else {
-  Write-Host "No settings backup found. Remove the Notification/Stop/UserPromptSubmit hooks manually if desired." -ForegroundColor Yellow
+if (Test-Path $installDir) {
+  Remove-Item $installDir -Recurse -Force
+  Write-Host "  deleted $installDir"
 }
 
-Write-Host "Uninstall complete. Restart Claude Code." -ForegroundColor Green
+$tempDir = Join-Path $env:TEMP 'claude-code-windows'
+if (Test-Path $tempDir) {
+  Remove-Item $tempDir -Recurse -Force
+}
+$legacy = Join-Path $env:TEMP 'claude-code-window.txt'
+if (Test-Path $legacy) {
+  Remove-Item $legacy -Force
+}
+
+Write-Host ''
+Write-Host 'Done. Restart any open Claude Code sessions.'
