@@ -7,6 +7,8 @@ folder and a snippet of Claude's reply. **Click it (or "Focus window") and the e
 window that launched that session comes to the front**, even with several Claude sessions
 open at once.
 
+![Example toast: project name, reply snippet, Focus window and Dismiss buttons](docs/images/toast-example.png)
+
 ## Why
 
 Built for the multi-IDE workflow: several editors or terminals open, one per codebase,
